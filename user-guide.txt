@@ -1,0 +1,815 @@
+# Agentic AI User Guide
+
+This user guide provides practical information and examples on how to use the Agentic AI framework to build intelligent agents for various applications.
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Working with Agents](#working-with-agents)
+- [Memory Systems](#memory-systems)
+- [Using Tools](#using-tools)
+- [Creating Custom Tools](#creating-custom-tools)
+- [Configuration](#configuration)
+- [Multi-Agent Systems](#multi-agent-systems)
+- [Best Practices](#best-practices)
+- [Troubleshooting](#troubleshooting)
+
+## Installation
+
+### Prerequisites
+
+- Python 3.8 or higher
+- pip (Python package manager)
+
+### Installing from GitHub
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/agentic-ai-solution.git
+cd agentic-ai-solution
+
+# Install the package
+pip install -e .
+```
+
+### Installing Dependencies
+
+The framework requires several dependencies, which are automatically installed when you install the package. If you want to install them manually, you can use:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Quick Start
+
+Here's a simple example to get you started with the Agentic AI framework:
+
+```python
+from agentic_ai import ReasoningAgent
+from agentic_ai import WebSearchTool
+from agentic_ai import WorkingMemory
+
+# Initialize components
+memory = WorkingMemory()
+web_search = WebSearchTool()
+
+# Create an agent
+agent = ReasoningAgent(
+    tools=[code_execution, file_operations],
+    memory=WorkingMemory(namespace="coding"),
+    system_prompt=system_prompts.CODING_AGENT_PROMPT,
+    name="CodingAgent"
+)
+
+synthesis_agent = ReasoningAgent(
+    tools=[file_operations],
+    memory=WorkingMemory(namespace="synthesis"),
+    system_prompt=system_prompts.REASONING_SYSTEM_PROMPT,
+    reasoning_steps=5,
+    name="SynthesisAgent"
+)
+
+# Example workflow with multiple agents
+def solve_complex_problem(problem_statement):
+    # Step 1: Research phase
+    research_prompt = f"Research information about: {problem_statement}\nSave findings to 'research_findings.txt'"
+    research_response = research_agent.run(research_prompt)
+    
+    # Add to shared memory
+    shared_memory.add({
+        "role": "research_agent",
+        "content": research_response
+    })
+    
+    # Step 2: Coding phase
+    coding_prompt = f"Implement a solution for: {problem_statement}\nUse information from 'research_findings.txt'"
+    coding_response = coding_agent.run(coding_prompt)
+    
+    # Add to shared memory
+    shared_memory.add({
+        "role": "coding_agent",
+        "content": coding_response
+    })
+    
+    # Step 3: Synthesis phase
+    synthesis_prompt = f"Evaluate the solution for: {problem_statement}\nConsider research in 'research_findings.txt' and code solution"
+    synthesis_response = synthesis_agent.run(synthesis_prompt)
+    
+    return {
+        "research": research_response,
+        "implementation": coding_response,
+        "evaluation": synthesis_response
+    }
+```
+
+This example demonstrates a multi-agent system where:
+1. A research agent gathers information about the problem
+2. A coding agent implements a solution based on the research
+3. A synthesis agent evaluates the overall solution
+
+## Best Practices
+
+### System Prompt Design
+
+Well-crafted system prompts significantly impact agent performance:
+
+1. **Be specific about the agent's role and capabilities**: Clearly define what the agent should do and how it should behave.
+
+2. **Include examples**: Provide examples of expected inputs and outputs to guide the agent.
+
+3. **Set boundaries**: Specify what the agent should not do or what limitations it should be aware of.
+
+4. **Define the response format**: If you need a specific format, clearly describe it in the system prompt.
+
+Example of a well-designed system prompt:
+
+```
+You are a financial analysis expert specializing in stock market trends.
+
+Your role is to:
+1. Analyze financial data and market trends
+2. Explain complex financial concepts in simple terms
+3. Provide balanced perspectives on investment opportunities
+4. Note important caveats and risk factors
+
+When using tools:
+- Use web search to find the latest market data
+- Use code execution to analyze financial data
+- Present results with clear explanations of methodology
+
+Always make it clear when you're expressing an opinion versus stating a fact.
+Do not provide specific investment advice or recommendations for individual stocks.
+```
+
+### Memory Management
+
+Effective memory management improves agent performance over time:
+
+1. **Use working memory for conversation context**: Keep track of the current conversation flow.
+
+2. **Use vector store for knowledge persistence**: Store important facts and information for later retrieval.
+
+3. **Periodically clean up memory**: Remove outdated or irrelevant information to prevent noise.
+
+4. **Structure memory entries**: Include metadata like timestamps and sources to improve retrieval relevance.
+
+### Tool Development
+
+Guidelines for creating effective tools:
+
+1. **Clear purpose**: Each tool should have a single, well-defined purpose.
+
+2. **Robust validation**: Thoroughly validate parameters to prevent errors and security issues.
+
+3. **Informative errors**: Provide clear error messages that help diagnose and fix issues.
+
+4. **Comprehensive documentation**: Document parameters, return values, and usage examples.
+
+5. **Rate limiting and timeouts**: Implement appropriate limits to prevent resource exhaustion.
+
+### Performance Optimization
+
+Techniques to improve performance:
+
+1. **Minimize LLM calls**: Batch operations and avoid unnecessary calls to the language model.
+
+2. **Cache results**: Store results of expensive operations like web searches or complex calculations.
+
+3. **Use appropriate model sizes**: Choose the smallest model that meets your needs to reduce latency and costs.
+
+4. **Optimize prompts**: Keep prompts concise and focused to reduce token usage.
+
+## Troubleshooting
+
+### Common Issues and Solutions
+
+**Issue**: Agent doesn't use tools correctly
+
+**Solutions**:
+- Check that tools are properly registered with the agent
+- Verify that the system prompt includes clear instructions on tool usage
+- Use ToolUsingAgent instead of BaseAgent for complex tool interactions
+- Examine tool execution logs for validation errors
+
+**Issue**: Memory doesn't persist between sessions
+
+**Solutions**:
+- Ensure vector store has a valid storage path
+- Check that namespace is consistent across sessions
+- Verify that memory.add() is called with the correct format
+- Export memory to JSON and reload it in the new session
+
+**Issue**: High latency in agent responses
+
+**Solutions**:
+- Reduce the number of tool calls
+- Use a smaller or faster model
+- Implement caching for expensive operations
+- Optimize prompts to reduce token count
+
+**Issue**: Security concerns with code execution
+
+**Solutions**:
+- Review allowed modules list and restrict to essential modules
+- Set appropriate timeouts to prevent resource exhaustion
+- Run in an isolated environment or container
+- Implement strict validation of user inputs
+
+### Debugging Techniques
+
+1. **Enable verbose logging**:
+
+```python
+from agentic_ai.utils.logger import setup_logging
+import logging
+
+setup_logging(level=logging.DEBUG, log_to_console=True)
+```
+
+2. **Inspect agent state**:
+
+```python
+# Print memory contents
+print("Memory contents:", agent.memory.get_all())
+
+# Print available tools
+print("Available tools:", [tool.name for tool in agent.tools])
+
+# Print current configuration
+from agentic_ai.config import get_config
+print("Configuration:", get_config())
+```
+
+3. **Test tools independently**:
+
+```python
+# Test web search tool directly
+web_search = WebSearchTool()
+results = web_search.execute(query="test query")
+print("Web search results:", results)
+
+# Test code execution tool directly
+code_execution = CodeExecutionTool()
+result = code_execution.execute(code="print('Hello, world!')")
+print("Code execution result:", result)
+```
+
+4. **Monitor LLM interactions**:
+
+Create a custom logger to monitor LLM calls:
+
+```python
+from agentic_ai.utils.logger import get_logger
+
+llm_logger = get_logger("llm_interactions")
+
+# Subclass BaseAgent to log LLM interactions
+class LoggingAgent(BaseAgent):
+    def _call_llm(self, prompt):
+        llm_logger.debug(f"Prompt to LLM: {prompt}")
+        response = super()._call_llm(prompt)
+        llm_logger.debug(f"Response from LLM: {response}")
+        return response
+```
+
+## Advanced Topics
+
+### Chaining Multiple Agents
+
+For complex workflows, you can chain multiple agents together:
+
+```python
+from agentic_ai import ReasoningAgent, ToolUsingAgent
+from agentic_ai import WebSearchTool, CodeExecutionTool
+
+# Create specialized agents
+researcher = ReasoningAgent(
+    tools=[WebSearchTool()],
+    name="Researcher"
+)
+
+coder = ToolUsingAgent(
+    tools=[CodeExecutionTool()],
+    name="Coder"
+)
+
+# Chain them together
+def research_and_implement(topic):
+    # First, research the topic
+    research_result = researcher.run(f"Research the latest approaches to {topic}")
+    
+    # Then, implement a solution based on the research
+    implementation = coder.run(
+        f"Implement a solution for {topic} based on this research:\n\n{research_result}"
+    )
+    
+    return {
+        "research": research_result,
+        "implementation": implementation
+    }
+
+# Use the chain
+result = research_and_implement("natural language processing")
+```
+
+### Customizing the Framework
+
+You can extend the framework to integrate with custom LLM providers:
+
+```python
+from agentic_ai import BaseAgent
+import your_custom_llm_client
+
+class CustomProviderAgent(BaseAgent):
+    def _call_llm(self, prompt):
+        """Override the LLM call method to use a custom provider."""
+        response = your_custom_llm_client.generate(
+            prompt=prompt,
+            model=self.model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens
+        )
+        return response.text
+
+# Use the custom agent
+agent = CustomProviderAgent(name="CustomAgent")
+```
+
+### Integration with External Systems
+
+The framework can be integrated with various external systems:
+
+```python
+from agentic_ai import ToolUsingAgent, BaseTool
+
+# Create a tool for database access
+class DatabaseTool(BaseTool):
+    def __init__(self, connection_string):
+        super().__init__(
+            name="database",
+            description="Query a database for information",
+            usage='database(query="SELECT * FROM users")',
+            params_schema={
+                "query": {
+                    "type": "string",
+                    "description": "SQL query to execute"
+                }
+            },
+            required_params=["query"],
+            returns_description="Query results"
+        )
+        self.connection_string = connection_string
+    
+    def execute(self, query):
+        # In a real implementation, this would connect to a database
+        # and execute the query
+        return {"rows": 10, "sample": [{"id": 1, "name": "Example"}]}
+
+# Create a tool for API access
+class APITool(BaseTool):
+    def __init__(self, api_base_url, api_key):
+        super().__init__(
+            name="api",
+            description="Call an external API",
+            usage='api(endpoint="/users", method="GET")',
+            params_schema={
+                "endpoint": {
+                    "type": "string",
+                    "description": "API endpoint"
+                },
+                "method": {
+                    "type": "string",
+                    "description": "HTTP method",
+                    "enum": ["GET", "POST", "PUT", "DELETE"]
+                },
+                "data": {
+                    "type": "object",
+                    "description": "Data for POST or PUT requests"
+                }
+            },
+            required_params=["endpoint", "method"],
+            returns_description="API response"
+        )
+        self.api_base_url = api_base_url
+        self.api_key = api_key
+    
+    def execute(self, endpoint, method, data=None):
+        # In a real implementation, this would make an API request
+        return {"status": "success", "data": {"example": "response"}}
+
+# Create an agent with these integration tools
+db_tool = DatabaseTool(connection_string="postgresql://user:pass@localhost/db")
+api_tool = APITool(api_base_url="https://api.example.com", api_key="your_api_key")
+
+agent = ToolUsingAgent(tools=[db_tool, api_tool])
+```
+
+This approach allows the agent to interact with databases, APIs, and other external systems through custom tools.web_search],
+    memory=memory,
+    name="MyFirstAgent"
+)
+
+# Run the agent with a query
+response = agent.run("What are the key factors driving climate change?")
+print(response)
+```
+
+This example creates a reasoning agent with web search capabilities and runs it with a query about climate change.
+
+## Working with Agents
+
+The framework provides different types of agents for various use cases:
+
+### BaseAgent
+
+The most basic agent with core functionality:
+
+```python
+from agentic_ai import BaseAgent
+
+agent = BaseAgent(
+    name="SimpleAgent",
+    model="claude-3-7-sonnet",
+    temperature=0.7
+)
+
+response = agent.run("Hello, what can you do?")
+```
+
+### ReasoningAgent
+
+An agent with enhanced reasoning capabilities:
+
+```python
+from agentic_ai import ReasoningAgent
+
+agent = ReasoningAgent(
+    reasoning_steps=3,  # Minimum number of reasoning steps
+    name="ThinkingAgent"
+)
+
+# Get detailed reasoning
+detailed_response = agent.run("What would happen if the moon disappeared?")
+
+# Get only the final answer
+concise_response = agent.run("What would happen if the moon disappeared?", extract_final_answer=True)
+```
+
+### ToolUsingAgent
+
+An agent specialized in using tools effectively:
+
+```python
+from agentic_ai import ToolUsingAgent
+from agentic_ai import WebSearchTool, CodeExecutionTool
+
+# Initialize tools
+web_search = WebSearchTool()
+code_execution = CodeExecutionTool()
+
+agent = ToolUsingAgent(
+    tools=[web_search, code_execution],
+    max_tool_iterations=3,
+    name="ToolExpert"
+)
+
+response = agent.run("Find the population of New York City and create a function to calculate population density.")
+```
+
+### Customizing System Prompts
+
+You can customize agent behavior using system prompts:
+
+```python
+from agentic_ai import ReasoningAgent
+from agentic_ai.prompts import system_prompts
+
+# Use a standard system prompt
+agent = ReasoningAgent(
+    system_prompt=system_prompts.RESEARCH_AGENT_PROMPT,
+    name="ResearchAgent"
+)
+
+# Or create a custom system prompt
+custom_prompt = """
+You are an AI assistant specializing in environmental science.
+Your goal is to provide detailed, scientifically accurate information about environmental topics,
+citing research studies and data when possible.
+"""
+
+agent = ReasoningAgent(
+    system_prompt=custom_prompt,
+    name="EnvironmentalScientist"
+)
+```
+
+## Memory Systems
+
+Memory systems allow agents to store and retrieve information across interactions.
+
+### Working Memory
+
+Short-term memory for conversation context:
+
+```python
+from agentic_ai import ReasoningAgent
+from agentic_ai import WorkingMemory
+
+# Create working memory
+memory = WorkingMemory(
+    max_entries=50,  # Maximum number of entries to store
+    buffer_type="fifo"  # First-in, first-out buffer management
+)
+
+# Create agent with memory
+agent = ReasoningAgent(memory=memory)
+
+# The agent will now remember previous interactions
+agent.run("My name is Alice.")
+response = agent.run("What's my name?")  # The agent should remember "Alice"
+```
+
+### Vector Store
+
+Long-term memory with semantic retrieval:
+
+```python
+from agentic_ai import ReasoningAgent
+from agentic_ai import VectorStore
+
+# Create vector store memory
+memory = VectorStore(
+    similarity_threshold=0.7,  # Minimum similarity for relevance
+    namespace="my_agent"  # Namespace for isolation
+)
+
+# Create agent with memory
+agent = ReasoningAgent(memory=memory)
+
+# Add information to memory
+memory.add({"content": "The capital of France is Paris."})
+memory.add({"content": "The Eiffel Tower is 330 meters tall."})
+
+# The agent will retrieve relevant information based on semantic similarity
+response = agent.run("Tell me about Paris.")  # Should mention information from memory
+```
+
+## Using Tools
+
+Tools extend agent capabilities by allowing them to interact with the external world.
+
+### Web Search Tool
+
+Retrieve information from the internet:
+
+```python
+from agentic_ai import ReasoningAgent
+from agentic_ai import WebSearchTool
+
+# Create a web search tool
+web_search = WebSearchTool(
+    search_engine="google",
+    max_results=5
+)
+
+# Create an agent with the tool
+agent = ReasoningAgent(tools=[web_search])
+
+# The agent can now search the web
+response = agent.run("What are the latest advancements in renewable energy?")
+```
+
+### Code Execution Tool
+
+Execute Python code for data processing and analysis:
+
+```python
+from agentic_ai import ToolUsingAgent
+from agentic_ai import CodeExecutionTool
+
+# Create a code execution tool
+code_execution = CodeExecutionTool(
+    timeout=10.0,
+    allow_plots=True
+)
+
+# Create an agent with the tool
+agent = ToolUsingAgent(tools=[code_execution])
+
+# The agent can now execute code
+response = agent.run("Create a function to calculate the Fibonacci sequence and show the first 10 numbers.")
+```
+
+### File Operations Tool
+
+Interact with the file system:
+
+```python
+from agentic_ai import ToolUsingAgent
+from agentic_ai import FileOperationsTool
+
+# Create a file operations tool
+file_operations = FileOperationsTool(
+    allowed_directories=["/path/to/data"],
+    default_directory="/path/to/data"
+)
+
+# Create an agent with the tool
+agent = ToolUsingAgent(tools=[file_operations])
+
+# The agent can now read and write files
+response = agent.run("Read the file 'data.csv' and create a summary of its contents.")
+```
+
+## Creating Custom Tools
+
+You can create custom tools to extend agent capabilities for specific domains or tasks.
+
+### Using the Tool Decorator
+
+The simplest way to create a custom tool is with the `@tool` decorator:
+
+```python
+from agentic_ai import tool, ToolUsingAgent
+
+# Create a custom tool using the decorator
+@tool(
+    name="calculator",
+    description="Perform mathematical calculations",
+    params_schema={
+        "expression": {
+            "type": "string",
+            "description": "Mathematical expression to evaluate"
+        }
+    },
+    required_params=["expression"]
+)
+def calculator(expression: str) -> float:
+    """Evaluate a mathematical expression."""
+    return eval(expression)
+
+# Create an agent with the custom tool
+agent = ToolUsingAgent(tools=[calculator])
+
+# Use the agent with the custom tool
+response = agent.run("Calculate the value of (15 * 7) + 22")
+```
+
+### Creating a Tool Class
+
+For more complex tools, you can create a class that inherits from `BaseTool`:
+
+```python
+from agentic_ai import BaseTool, ToolUsingAgent
+import requests
+
+class WeatherTool(BaseTool):
+    """Tool for getting weather information for a location."""
+    
+    def __init__(self, api_key: str, name: str = "weather"):
+        params_schema = {
+            "location": {
+                "type": "string",
+                "description": "City name or location"
+            },
+            "units": {
+                "type": "string",
+                "description": "Temperature units (celsius or fahrenheit)",
+                "enum": ["celsius", "fahrenheit"]
+            }
+        }
+        
+        super().__init__(
+            name=name,
+            description="Get current weather for a location",
+            usage=f'{name}(location="New York", units="celsius")',
+            params_schema=params_schema,
+            required_params=["location"],
+            returns_description="Current weather information"
+        )
+        
+        self.api_key = api_key
+    
+    def execute(self, location: str, units: str = "celsius") -> dict:
+        """Get weather for a location."""
+        # In a real implementation, this would call a weather API
+        # For this example, we'll return mock data
+        return {
+            "location": location,
+            "temperature": 22 if units == "celsius" else 72,
+            "condition": "Partly Cloudy",
+            "humidity": 65,
+            "wind_speed": 10
+        }
+
+# Create an agent with the custom tool
+weather_tool = WeatherTool(api_key="your_api_key")
+agent = ToolUsingAgent(tools=[weather_tool])
+
+# Use the agent with the custom tool
+response = agent.run("What's the weather like in Paris?")
+```
+
+## Configuration
+
+The framework provides a flexible configuration system for customizing behavior.
+
+### Loading Configuration from File
+
+Create a configuration file named `agentic_ai_config.json` or `agentic_ai_config.yaml` in your project directory:
+
+```json
+{
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-3-7-sonnet",
+    "temperature": 0.5,
+    "api_key": "your_api_key"
+  },
+  "agents": {
+    "max_tool_iterations": 3
+  },
+  "tools": {
+    "web_search": {
+      "search_engine": "bing",
+      "max_results": 3
+    }
+  }
+}
+```
+
+Then load the configuration in your code:
+
+```python
+from agentic_ai.config import load_config, get_config
+
+# Load configuration from default locations
+config = load_config()
+
+# Or specify a config file
+config = load_config(config_file="path/to/my_config.json")
+
+# Get configuration values
+model = config["llm"]["model"]
+```
+
+### Environment Variables
+
+You can also configure the framework using environment variables with the prefix `AGENTIC_AI_`:
+
+```bash
+# Set environment variables
+export AGENTIC_AI_LLM_MODEL=claude-3-7-sonnet
+export AGENTIC_AI_LLM_API_KEY=your_api_key
+export AGENTIC_AI_AGENTS_MAX_TOOL_ITERATIONS=3
+```
+
+These will be automatically loaded when you call `load_config()`.
+
+### Programmatic Configuration
+
+You can update configuration at runtime:
+
+```python
+from agentic_ai.config import update_config, get_config_value
+
+# Update specific configuration values
+update_config({
+    "llm": {
+        "temperature": 0.3
+    }
+})
+
+# Get specific configuration values
+temperature = get_config_value("llm.temperature")
+```
+
+## Multi-Agent Systems
+
+You can create systems with multiple specialized agents that collaborate to solve complex problems.
+
+```python
+from agentic_ai import ReasoningAgent, ToolUsingAgent
+from agentic_ai import WebSearchTool, CodeExecutionTool, FileOperationsTool
+from agentic_ai import WorkingMemory, VectorStore
+from agentic_ai.prompts import system_prompts
+
+# Create shared memory
+shared_memory = VectorStore(namespace="shared")
+
+# Create tools
+web_search = WebSearchTool()
+code_execution = CodeExecutionTool()
+file_operations = FileOperationsTool()
+
+# Create specialized agents
+research_agent = ReasoningAgent(
+    tools=[web_search, file_operations],
+    memory=WorkingMemory(namespace="research"),
+    system_prompt=system_prompts.RESEARCH_AGENT_PROMPT,
+    name="ResearchAgent"
+)
+
+coding_agent = ToolUsingAgent(
+    tools=[

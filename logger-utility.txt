@@ -1,0 +1,245 @@
+"""
+Logging Utility
+
+This module provides logging functionality for the Agentic AI framework,
+with consistent formatting and multiple output options.
+"""
+
+import logging
+import os
+import sys
+import time
+from pathlib import Path
+from typing import Optional, Dict, Any, Union
+
+# Default log format
+DEFAULT_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Default log level
+DEFAULT_LEVEL = logging.INFO
+
+# Global dictionary to track loggers
+_loggers: Dict[str, logging.Logger] = {}
+
+def setup_logging(
+    level: int = DEFAULT_LEVEL,
+    log_format: str = DEFAULT_FORMAT,
+    log_file: Optional[str] = None,
+    log_to_console: bool = True,
+    log_dir: Optional[str] = None,
+    rotate_logs: bool = False,
+    max_bytes: int = 10 * 1024 * 1024,  # 10MB
+    backup_count: int = 5
+) -> None:
+    """
+    Set up logging configuration for the framework.
+    
+    Args:
+        level: Logging level (e.g., logging.INFO, logging.DEBUG)
+        log_format: Format string for log messages
+        log_file: Path to log file (if None, logs to console only)
+        log_to_console: Whether to log to console
+        log_dir: Directory for log files (default: ~/.agentic_ai/logs)
+        rotate_logs: Whether to rotate log files
+        max_bytes: Maximum size of log file before rotation
+        backup_count: Number of backup files to keep
+    """
+    # Create root logger
+    root_logger = logging.getLogger("agentic_ai")
+    root_logger.setLevel(level)
+    
+    # Remove any existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
+    # Create formatter
+    formatter = logging.Formatter(log_format)
+    
+    # Add console handler if requested
+    if log_to_console:
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setFormatter(formatter)
+        root_logger.addHandler(console_handler)
+    
+    # Add file handler if requested
+    if log_file or log_dir:
+        if log_file:
+            file_path = Path(log_file)
+        else:
+            # Set up default log directory
+            if not log_dir:
+                log_dir = Path.home() / ".agentic_ai" / "logs"
+            
+            # Create directory if it doesn't exist
+            os.makedirs(log_dir, exist_ok=True)
+            
+            # Create log file path with timestamp
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            file_path = Path(log_dir) / f"agentic_ai_{timestamp}.log"
+        
+        # Create directory if needed
+        os.makedirs(file_path.parent, exist_ok=True)
+        
+        # Choose the appropriate handler based on rotation setting
+        if rotate_logs:
+            from logging.handlers import RotatingFileHandler
+            file_handler = RotatingFileHandler(
+                file_path,
+                maxBytes=max_bytes,
+                backupCount=backup_count
+            )
+        else:
+            file_handler = logging.FileHandler(file_path)
+        
+        file_handler.setFormatter(formatter)
+        root_logger.addHandler(file_handler)
+    
+    # Register the root logger
+    _loggers["agentic_ai"] = root_logger
+    
+    # Log setup completion
+    root_logger.info(f"Logging initialized at level {logging.getLevelName(level)}")
+
+
+def get_logger(name: str) -> logging.Logger:
+    """
+    Get a logger instance with the specified name.
+    
+    The name will be prefixed with 'agentic_ai.' if it doesn't already start with it.
+    
+    Args:
+        name: Logger name (e.g., 'agent.reasoning', 'tool.web_search')
+        
+    Returns:
+        Logger instance
+    """
+    # Add prefix if needed
+    if not name.startswith("agentic_ai."):
+        full_name = f"agentic_ai.{name}"
+    else:
+        full_name = name
+    
+    # Return existing logger if available
+    if full_name in _loggers:
+        return _loggers[full_name]
+    
+    # Create new logger
+    logger = logging.getLogger(full_name)
+    _loggers[full_name] = logger
+    
+    return logger
+
+
+class AgentLogger:
+    """
+    Specialized logger for agents with additional agent-specific context.
+    
+    This logger adds agent metadata to log messages and provides convenience
+    methods for common agent logging scenarios.
+    """
+    
+    def __init__(self, agent_name: str, agent_id: Optional[str] = None, metadata: Optional[Dict[str, Any]] = None):
+        """
+        Initialize an agent logger.
+        
+        Args:
+            agent_name: Name of the agent
+            agent_id: Unique identifier for the agent instance
+            metadata: Additional metadata to include in logs
+        """
+        self.agent_name = agent_name
+        self.agent_id = agent_id or f"{agent_name}_{int(time.time())}"
+        self.metadata = metadata or {}
+        
+        # Create underlying logger
+        self.logger = get_logger(f"agent.{agent_name.lower()}")
+    
+    def format_context(self, extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Format context information for log messages."""
+        context = {
+            "agent_id": self.agent_id,
+            "agent_name": self.agent_name
+        }
+        
+        # Add metadata
+        context.update(self.metadata)
+        
+        # Add extra info if provided
+        if extra:
+            context.update(extra)
+        
+        return context
+    
+    def debug(self, message: str, extra: Optional[Dict[str, Any]] = None) -> None:
+        """Log a debug message with agent context."""
+        self.logger.debug(message, extra=self.format_context(extra))
+    
+    def info(self, message: str, extra: Optional[Dict[str, Any]] = None) -> None:
+        """Log an info message with agent context."""
+        self.logger.info(message, extra=self.format_context(extra))
+    
+    def warning(self, message: str, extra: Optional[Dict[str, Any]] = None) -> None:
+        """Log a warning message with agent context."""
+        self.logger.warning(message, extra=self.format_context(extra))
+    
+    def error(self, message: str, extra: Optional[Dict[str, Any]] = None) -> None:
+        """Log an error message with agent context."""
+        self.logger.error(message, extra=self.format_context(extra))
+    
+    def critical(self, message: str, extra: Optional[Dict[str, Any]] = None) -> None:
+        """Log a critical message with agent context."""
+        self.logger.critical(message, extra=self.format_context(extra))
+    
+    def log_tool_call(self, tool_name: str, params: Dict[str, Any], result: Any) -> None:
+        """
+        Log a tool call made by the agent.
+        
+        Args:
+            tool_name: Name of the tool
+            params: Parameters passed to the tool
+            result: Result returned by the tool
+        """
+        self.info(
+            f"Tool call: {tool_name}",
+            extra={
+                "event_type": "tool_call",
+                "tool_name": tool_name,
+                "parameters": params,
+                "result": result
+            }
+        )
+    
+    def log_decision(self, decision: str, reasoning: str) -> None:
+        """
+        Log a decision made by the agent.
+        
+        Args:
+            decision: The decision made
+            reasoning: Reasoning behind the decision
+        """
+        self.info(
+            f"Decision: {decision}",
+            extra={
+                "event_type": "decision",
+                "decision": decision,
+                "reasoning": reasoning
+            }
+        )
+    
+    def log_error(self, error_type: str, message: str, traceback: Optional[str] = None) -> None:
+        """
+        Log an error encountered by the agent.
+        
+        Args:
+            error_type: Type of error
+            message: Error message
+            traceback: Optional traceback
+        """
+        self.error(
+            f"Error ({error_type}): {message}",
+            extra={
+                "event_type": "error",
+                "error_type": error_type,
+                "traceback": traceback
+            }
+        )

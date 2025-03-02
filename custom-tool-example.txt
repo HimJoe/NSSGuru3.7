@@ -1,0 +1,339 @@
+"""
+Custom Tool Example
+
+This script demonstrates how to create and use custom tools with the Agentic AI framework.
+It shows both class-based and decorator-based approaches to tool creation.
+"""
+
+import os
+import sys
+import logging
+import requests
+import json
+from typing import Dict, List, Any, Optional, Union
+
+# Add parent directory to path to allow importing the package
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+
+# Import the framework
+from agentic_ai import ToolUsingAgent, ReasoningAgent
+from agentic_ai import BaseTool, tool
+from agentic_ai import WorkingMemory
+from agentic_ai.utils.logger import setup_logging, get_logger
+
+# Set up logging
+setup_logging(level=logging.INFO, log_to_console=True)
+logger = get_logger("examples.custom_tool")
+
+# Example 1: Class-based custom tool
+class WeatherTool(BaseTool):
+    """
+    Tool for getting weather information for a location.
+    
+    This is an example of a class-based custom tool implementation.
+    """
+    
+    def __init__(self, api_key: Optional[str] = None, name: str = "weather"):
+        """
+        Initialize the weather tool.
+        
+        Args:
+            api_key: API key for the weather service
+            name: Tool name
+        """
+        # Define parameter schema
+        params_schema = {
+            "location": {
+                "type": "string",
+                "description": "City name or location (e.g., 'New York', 'London, UK')"
+            },
+            "units": {
+                "type": "string",
+                "description": "Temperature units (celsius or fahrenheit)",
+                "enum": ["celsius", "fahrenheit"]
+            },
+            "forecast_days": {
+                "type": "integer",
+                "description": "Number of days to forecast (0-7)",
+                "minimum": 0,
+                "maximum": 7
+            }
+        }
+        
+        super().__init__(
+            name=name,
+            description="Get current weather and forecast for a location",
+            usage=f'{name}(location="New York", units="celsius", forecast_days=3)',
+            params_schema=params_schema,
+            required_params=["location"],
+            returns_description="Weather information including current conditions and forecast"
+        )
+        
+        self.api_key = api_key
+        self.logger.info(f"Initialized weather tool (using mock data)")
+    
+    def execute(
+        self,
+        location: str,
+        units: str = "celsius",
+        forecast_days: int = 0
+    ) -> Dict[str, Any]:
+        """
+        Get weather information for a location.
+        
+        Args:
+            location: City name or location
+            units: Temperature units (celsius or fahrenheit)
+            forecast_days: Number of days to forecast
+            
+        Returns:
+            Weather information dictionary
+        """
+        self.logger.info(f"Getting weather for location: {location}")
+        
+        # For this example, we'll use mock data instead of calling a real API
+        # In a real implementation, you would call a weather API here
+        
+        # Mock current weather
+        current_weather = {
+            "condition": "Partly Cloudy",
+            "temperature": 22 if units == "celsius" else 72,
+            "humidity": 65,
+            "wind_speed": 10,
+            "wind_direction": "NW",
+            "pressure": 1012,
+            "uv_index": 5
+        }
+        
+        # Mock forecast
+        forecast = []
+        for i in range(min(forecast_days, 7)):
+            day = {
+                "day": i + 1,
+                "condition": ["Sunny", "Partly Cloudy", "Cloudy", "Light Rain"][i % 4],
+                "high": 24 + i if units == "celsius" else 75 + i * 2,
+                "low": 15 + i if units == "celsius" else 59 + i * 2,
+                "precipitation_chance": (i * 10) % 100
+            }
+            forecast.append(day)
+        
+        # Build response
+        response = {
+            "location": location,
+            "units": units,
+            "current": current_weather,
+            "forecast": forecast if forecast_days > 0 else None,
+            "last_updated": "2024-02-01T12:00:00Z"  # Mock timestamp
+        }
+        
+        return response
+
+# Example 2: Decorator-based custom tool
+@tool(
+    name="dictionary",
+    description="Look up the definition of a word",
+    params_schema={
+        "word": {
+            "type": "string",
+            "description": "The word to look up"
+        },
+        "include_examples": {
+            "type": "boolean",
+            "description": "Whether to include usage examples"
+        }
+    },
+    required_params=["word"]
+)
+def dictionary_lookup(word: str, include_examples: bool = False) -> Dict[str, Any]:
+    """
+    Look up the definition of a word.
+    
+    Args:
+        word: The word to look up
+        include_examples: Whether to include usage examples
+        
+    Returns:
+        Dictionary with word definitions and optional examples
+    """
+    logger.info(f"Looking up definition for word: {word}")
+    
+    # Mock dictionary data
+    mock_definitions = {
+        "algorithm": {
+            "part_of_speech": "noun",
+            "definitions": [
+                "A process or set of rules to be followed in calculations or other problem-solving operations, especially by a computer.",
+                "A procedure for solving a mathematical problem in a finite number of steps."
+            ],
+            "examples": [
+                "A good algorithm for this task would be more efficient.",
+                "The search algorithm analyzes patterns in the data."
+            ]
+        },
+        "agent": {
+            "part_of_speech": "noun",
+            "definitions": [
+                "A person or thing that acts or has the power to act.",
+                "A person who manages business, financial, or contractual matters for another.",
+                "In computing, a program that performs tasks automatically."
+            ],
+            "examples": [
+                "The real estate agent showed us several houses.",
+                "The software agent monitors system performance continuously."
+            ]
+        },
+        "agentic": {
+            "part_of_speech": "adjective",
+            "definitions": [
+                "Having or exercising agency or the capacity to act independently.",
+                "In AI, referring to systems that can act autonomously to accomplish goals."
+            ],
+            "examples": [
+                "The framework enables agentic behaviors in artificial intelligence systems.",
+                "Agentic AI can solve problems without explicit step-by-step instructions."
+            ]
+        }
+    }
+    
+    # Normalize the word and check if it exists in our mock dictionary
+    word_lower = word.lower()
+    if word_lower in mock_definitions:
+        result = {
+            "word": word,
+            "part_of_speech": mock_definitions[word_lower]["part_of_speech"],
+            "definitions": mock_definitions[word_lower]["definitions"]
+        }
+        
+        # Include examples if requested
+        if include_examples:
+            result["examples"] = mock_definitions[word_lower]["examples"]
+        
+        return result
+    else:
+        # Word not found
+        return {
+            "word": word,
+            "error": "Word not found in dictionary",
+            "suggestions": ["algorithm", "agent", "agentic"]  # Mock suggestions
+        }
+
+# Example 3: API-based tool with the decorator approach
+@tool(
+    name="quote_generator",
+    description="Generate an inspirational quote",
+    params_schema={
+        "category": {
+            "type": "string",
+            "description": "Category of quote (inspiration, wisdom, success, etc.)",
+            "enum": ["inspiration", "wisdom", "success", "leadership", "random"]
+        }
+    }
+)
+def generate_quote(category: str = "random") -> Dict[str, Any]:
+    """
+    Generate an inspirational quote.
+    
+    Args:
+        category: Category of quote
+        
+    Returns:
+        Dictionary with the quote and author
+    """
+    logger.info(f"Generating quote in category: {category}")
+    
+    # Mock quotes database
+    quotes = [
+        {"quote": "The best way to predict the future is to create it.", "author": "Peter Drucker", "category": "leadership"},
+        {"quote": "Innovation distinguishes between a leader and a follower.", "author": "Steve Jobs", "category": "leadership"},
+        {"quote": "The only way to do great work is to love what you do.", "author": "Steve Jobs", "category": "inspiration"},
+        {"quote": "Success is not final, failure is not fatal: It is the courage to continue that counts.", "author": "Winston Churchill", "category": "success"},
+        {"quote": "The secret of getting ahead is getting started.", "author": "Mark Twain", "category": "success"},
+        {"quote": "The only limit to our realization of tomorrow is our doubts of today.", "author": "Franklin D. Roosevelt", "category": "inspiration"},
+        {"quote": "The future belongs to those who believe in the beauty of their dreams.", "author": "Eleanor Roosevelt", "category": "inspiration"},
+        {"quote": "Wisdom is not a product of schooling but of the lifelong attempt to acquire it.", "author": "Albert Einstein", "category": "wisdom"},
+        {"quote": "The only true wisdom is in knowing you know nothing.", "author": "Socrates", "category": "wisdom"},
+        {"quote": "The journey of a thousand miles begins with one step.", "author": "Lao Tzu", "category": "wisdom"}
+    ]
+    
+    # Filter by category if not random
+    if category.lower() != "random":
+        filtered_quotes = [q for q in quotes if q["category"].lower() == category.lower()]
+        
+        # If no quotes in category, fall back to all quotes
+        if not filtered_quotes:
+            filtered_quotes = quotes
+    else:
+        filtered_quotes = quotes
+    
+    # Select a "random" quote (in a real tool, you would use random.choice)
+    # For predictability in this example, we'll use a simple approach
+    selected_quote = filtered_quotes[hash(category) % len(filtered_quotes)]
+    
+    return {
+        "quote": selected_quote["quote"],
+        "author": selected_quote["author"],
+        "category": selected_quote["category"]
+    }
+
+def main():
+    """Run the custom tool example."""
+    print("Agentic AI Framework - Custom Tool Example")
+    print("=========================================")
+    
+    # Create custom tools
+    weather_tool = WeatherTool()
+    
+    # Note: The decorator-based tools are already created
+    # We just need to use them by name in the agent
+    
+    # Create an agent with the custom tools
+    agent = ToolUsingAgent(
+        tools=[weather_tool],  # Only pass class-based tools here
+        memory=WorkingMemory(),
+        name="CustomToolAgent"
+    )
+    
+    # Register decorator-based tools with the agent
+    agent.tools.extend([dictionary_lookup, generate_quote])
+    
+    print("\nCreated an agent with 3 custom tools:")
+    print("- weather: Get weather information for a location")
+    print("- dictionary: Look up word definitions")
+    print("- quote_generator: Generate inspirational quotes")
+    
+    # Example 1: Weather tool
+    print("\nExample 1: Using the Weather Tool")
+    query = "What's the weather like in San Francisco? Also, give me a 3-day forecast."
+    print(f"Query: {query}")
+    
+    response = agent.run(query)
+    print(f"Response: {response}\n")
+    
+    # Example 2: Dictionary tool
+    print("\nExample 2: Using the Dictionary Tool")
+    query = "Define the word 'agentic' and provide some usage examples."
+    print(f"Query: {query}")
+    
+    response = agent.run(query)
+    print(f"Response: {response}\n")
+    
+    # Example 3: Quote generator tool
+    print("\nExample 3: Using the Quote Generator Tool")
+    query = "I need some inspiration today. Can you generate an inspirational quote for me?"
+    print(f"Query: {query}")
+    
+    response = agent.run(query)
+    print(f"Response: {response}\n")
+    
+    # Example 4: Using multiple tools together
+    print("\nExample 4: Using Multiple Tools Together")
+    query = "Give me the current weather in New York, define 'algorithm', and provide a wisdom quote."
+    print(f"Query: {query}")
+    
+    response = agent.run(query)
+    print(f"Response: {response}\n")
+    
+    print("\nExample complete! You've seen how to create and use custom tools with both class-based and decorator-based approaches.")
+
+if __name__ == "__main__":
+    main()

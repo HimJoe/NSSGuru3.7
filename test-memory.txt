@@ -1,0 +1,386 @@
+"""
+Tests for the memory implementations in the Agentic AI framework.
+"""
+
+import os
+import sys
+import pytest
+import tempfile
+import numpy as np
+from unittest.mock import patch, MagicMock
+from typing import Dict, List, Any
+
+# Add parent directory to path to allow importing the package
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Import the framework
+from src.agentic_ai.memory import WorkingMemory, VectorStore
+
+class TestWorkingMemory:
+    """Tests for the WorkingMemory class."""
+    
+    def test_initialization(self):
+        """Test that a working memory can be initialized with default values."""
+        memory = WorkingMemory()
+        
+        assert memory.max_entries == 100
+        assert memory.buffer_type == "fifo"
+        assert memory.namespace == "default"
+        assert len(memory.buffer) == 0
+    
+    def test_initialization_with_custom_values(self):
+        """Test that a working memory can be initialized with custom values."""
+        memory = WorkingMemory(
+            max_entries=50,
+            buffer_type="priority",
+            namespace="test"
+        )
+        
+        assert memory.max_entries == 50
+        assert memory.buffer_type == "priority"
+        assert memory.namespace == "test"
+    
+    def test_add_method(self):
+        """Test the add method of WorkingMemory."""
+        memory = WorkingMemory()
+        
+        # Add an entry
+        memory.add({"content": "Test entry"})
+        
+        # Verify that the entry was added
+        assert len(memory.buffer) == 1
+        assert memory.buffer[0]["content"] == "Test entry"
+        
+        # Verify that timestamp was added
+        assert "timestamp" in memory.buffer[0]
+    
+    def test_add_method_with_priority(self):
+        """Test the add method of WorkingMemory with priority."""
+        memory = WorkingMemory(buffer_type="priority")
+        
+        # Add entries with different priorities
+        memory.add({"content": "Low priority", "id": "low"}, priority=1.0)
+        memory.add({"content": "High priority", "id": "high"}, priority=5.0)
+        
+        # Verify that entries were added with priorities
+        assert len(memory.buffer) == 2
+        assert memory.priorities["low"] == 1.0
+        assert memory.priorities["high"] == 5.0
+    
+    def test_add_method_with_max_entries(self):
+        """Test the add method of WorkingMemory with max entries limit."""
+        memory = WorkingMemory(max_entries=2)
+        
+        # Add more entries than the maximum
+        memory.add({"content": "Entry 1", "id": "1"})
+        memory.add({"content": "Entry 2", "id": "2"})
+        memory.add({"content": "Entry 3", "id": "3"})
+        
+        # Verify that only the most recent entries were kept (FIFO)
+        assert len(memory.buffer) == 2
+        assert memory.buffer[0]["content"] == "Entry 2"
+        assert memory.buffer[1]["content"] == "Entry 3"
+    
+    def test_get_all_method(self):
+        """Test the get_all method of WorkingMemory."""
+        memory = WorkingMemory()
+        
+        # Add entries
+        memory.add({"content": "Entry 1"})
+        memory.add({"content": "Entry 2"})
+        
+        # Get all entries
+        entries = memory.get_all()
+        
+        # Verify that all entries were returned
+        assert len(entries) == 2
+        assert entries[0]["content"] == "Entry 1"
+        assert entries[1]["content"] == "Entry 2"
+    
+    def test_get_recent_method(self):
+        """Test the get_recent method of WorkingMemory."""
+        memory = WorkingMemory()
+        
+        # Add entries
+        memory.add({"content": "Entry 1"})
+        memory.add({"content": "Entry 2"})
+        memory.add({"content": "Entry 3"})
+        
+        # Get recent entries
+        entries = memory.get_recent(2)
+        
+        # Verify that only the most recent entries were returned
+        assert len(entries) == 2
+        assert entries[0]["content"] == "Entry 2"
+        assert entries[1]["content"] == "Entry 3"
+    
+    def test_get_conversation_method(self):
+        """Test the get_conversation method of WorkingMemory."""
+        memory = WorkingMemory()
+        
+        # Add conversation entries
+        memory.add({"role": "user", "content": "User message"})
+        memory.add({"role": "assistant", "content": "Assistant response"})
+        
+        # Get conversation
+        conversation = memory.get_conversation()
+        
+        # Verify conversation format
+        assert "User: User message" in conversation
+        assert "Assistant: Assistant response" in conversation
+    
+    def test_retrieve_method(self):
+        """Test the retrieve method of WorkingMemory."""
+        memory = WorkingMemory()
+        
+        # Add entries
+        memory.add({"role": "user", "content": "User message 1"})
+        memory.add({"role": "assistant", "content": "Assistant response 1"})
+        memory.add({"role": "user", "content": "User message 2"})
+        
+        # Retrieve entries
+        result = memory.retrieve(count=2)
+        
+        # Verify retrieval format
+        assert "Assistant: Assistant response 1" in result
+        assert "User: User message 2" in result
+    
+    def test_clear_method(self):
+        """Test the clear method of WorkingMemory."""
+        memory = WorkingMemory()
+        
+        # Add entries
+        memory.add({"content": "Entry 1"})
+        memory.add({"content": "Entry 2"})
+        
+        # Verify entries were added
+        assert len(memory.buffer) == 2
+        
+        # Clear memory
+        memory.clear()
+        
+        # Verify memory was cleared
+        assert len(memory.buffer) == 0
+        assert len(memory.priorities) == 0
+    
+    def test_to_json_method(self):
+        """Test the to_json method of WorkingMemory."""
+        memory = WorkingMemory()
+        
+        # Add an entry
+        memory.add({"content": "Test entry"})
+        
+        # Convert to JSON
+        json_str = memory.to_json()
+        
+        # Verify JSON format
+        assert "Test entry" in json_str
+    
+    def test_from_json_method(self):
+        """Test the from_json method of WorkingMemory."""
+        memory = WorkingMemory()
+        
+        # Create JSON string
+        json_str = '[{"content": "Test entry", "timestamp": 1677825464}]'
+        
+        # Load from JSON
+        memory.from_json(json_str)
+        
+        # Verify entry was loaded
+        assert len(memory.buffer) == 1
+        assert memory.buffer[0]["content"] == "Test entry"
+
+
+class TestVectorStore:
+    """Tests for the VectorStore class."""
+    
+    @pytest.fixture(scope="function")
+    def temp_vector_store(self, temp_directory) -> VectorStore:
+        """Create a temporary vector store for testing."""
+        return VectorStore(storage_path=temp_directory)
+    
+    def test_initialization(self):
+        """Test that a vector store can be initialized with default values."""
+        with patch('src.agentic_ai.memory.vector_store.os.makedirs'):
+            memory = VectorStore()
+            
+            assert memory.max_entries == 1000
+            assert memory.similarity_threshold == 0.7
+            assert memory.namespace == "default"
+            assert len(memory.entries) == 0
+    
+    def test_initialization_with_custom_values(self):
+        """Test that a vector store can be initialized with custom values."""
+        with patch('src.agentic_ai.memory.vector_store.os.makedirs'):
+            memory = VectorStore(
+                max_entries=500,
+                similarity_threshold=0.5,
+                namespace="test"
+            )
+            
+            assert memory.max_entries == 500
+            assert memory.similarity_threshold == 0.5
+            assert memory.namespace == "test"
+    
+    def test_add_method(self, temp_vector_store):
+        """Test the add method of VectorStore."""
+        # Mock the _get_embedding method
+        with patch.object(temp_vector_store, '_get_embedding') as mock_get_embedding:
+            # Set up the mock to return a simple embedding
+            mock_get_embedding.return_value = np.array([0.1, 0.2, 0.3])
+            
+            # Add an entry
+            temp_vector_store.add({"content": "Test entry"})
+            
+            # Verify that the entry was added
+            assert len(temp_vector_store.entries) == 1
+            assert temp_vector_store.entries[0]["content"] == "Test entry"
+            
+            # Verify that timestamp was added
+            assert "timestamp" in temp_vector_store.entries[0]
+            
+            # Verify that embedding was created
+            mock_get_embedding.assert_called_once()
+            assert temp_vector_store.embeddings.shape == (1, 3)
+    
+    def test_add_method_with_max_entries(self, temp_vector_store):
+        """Test the add method of VectorStore with max entries limit."""
+        # Mock the _get_embedding method
+        with patch.object(temp_vector_store, '_get_embedding') as mock_get_embedding:
+            # Set up the mock to return a simple embedding
+            mock_get_embedding.return_value = np.array([0.1, 0.2, 0.3])
+            
+            # Set a low max_entries limit
+            temp_vector_store.max_entries = 2
+            
+            # Add more entries than the maximum
+            temp_vector_store.add({"content": "Entry 1"})
+            temp_vector_store.add({"content": "Entry 2"})
+            temp_vector_store.add({"content": "Entry 3"})
+            
+            # Verify that only the most recent entries were kept
+            assert len(temp_vector_store.entries) == 2
+            assert temp_vector_store.entries[0]["content"] == "Entry 2"
+            assert temp_vector_store.entries[1]["content"] == "Entry 3"
+    
+    def test_retrieve_method(self, temp_vector_store):
+        """Test the retrieve method of VectorStore."""
+        # Mock the _get_embedding and _cosine_similarity methods
+        with patch.object(temp_vector_store, '_get_embedding') as mock_get_embedding, \
+             patch.object(temp_vector_store, '_cosine_similarity') as mock_cosine_similarity:
+            
+            # Set up the mocks
+            mock_get_embedding.return_value = np.array([0.1, 0.2, 0.3])
+            mock_cosine_similarity.return_value = 0.8  # Above threshold
+            
+            # Add entries
+            temp_vector_store.add({"content": "Entry 1"})
+            temp_vector_store.add({"content": "Entry 2"})
+            
+            # Retrieve with a query
+            result = temp_vector_store.retrieve("test query")
+            
+            # Verify that retrieve called the mocks correctly
+            mock_get_embedding.assert_called_with("test query")
+            assert mock_cosine_similarity.call_count == 2
+            
+            # Verify that both entries were retrieved (similarity > threshold)
+            assert "Entry 1" in result
+            assert "Entry 2" in result
+    
+    def test_retrieve_method_with_threshold(self, temp_vector_store):
+        """Test the retrieve method of VectorStore with threshold filtering."""
+        # Mock the _get_embedding and _cosine_similarity methods
+        with patch.object(temp_vector_store, '_get_embedding') as mock_get_embedding, \
+             patch.object(temp_vector_store, '_cosine_similarity') as mock_cosine_similarity:
+            
+            # Set up the mocks with different similarity values
+            mock_get_embedding.return_value = np.array([0.1, 0.2, 0.3])
+            mock_cosine_similarity.side_effect = [0.8, 0.6]  # First above, second below threshold
+            
+            # Set threshold
+            temp_vector_store.similarity_threshold = 0.7
+            
+            # Add entries
+            temp_vector_store.add({"content": "Entry 1"})
+            temp_vector_store.add({"content": "Entry 2"})
+            
+            # Retrieve with a query
+            result = temp_vector_store.retrieve("test query")
+            
+            # Verify that only Entry 1 was retrieved (similarity > threshold)
+            assert "Entry 1" in result
+            assert "Entry 2" not in result
+    
+    def test_search_method(self, temp_vector_store):
+        """Test the search method of VectorStore."""
+        # Mock the _get_embedding and _cosine_similarity methods
+        with patch.object(temp_vector_store, '_get_embedding') as mock_get_embedding, \
+             patch.object(temp_vector_store, '_cosine_similarity') as mock_cosine_similarity:
+            
+            # Set up the mocks
+            mock_get_embedding.return_value = np.array([0.1, 0.2, 0.3])
+            mock_cosine_similarity.side_effect = [0.9, 0.7]  # Different similarities
+            
+            # Add entries
+            temp_vector_store.add({"content": "Entry 1"})
+            temp_vector_store.add({"content": "Entry 2"})
+            
+            # Search with a query
+            results = temp_vector_store.search("test query")
+            
+            # Verify that search called the mocks correctly
+            mock_get_embedding.assert_called_with("test query")
+            assert mock_cosine_similarity.call_count == 2
+            
+            # Verify that both entries were found with correct similarities
+            assert len(results) == 2
+            assert results[0]["similarity"] == 0.9
+            assert results[0]["entry"]["content"] == "Entry 1"
+            assert results[1]["similarity"] == 0.7
+            assert results[1]["entry"]["content"] == "Entry 2"
+    
+    def test_clear_method(self, temp_vector_store):
+        """Test the clear method of VectorStore."""
+        # Mock the _get_embedding method
+        with patch.object(temp_vector_store, '_get_embedding') as mock_get_embedding, \
+             patch.object(temp_vector_store, '_save_to_disk') as mock_save_to_disk:
+            
+            # Set up the mock
+            mock_get_embedding.return_value = np.array([0.1, 0.2, 0.3])
+            
+            # Add entries
+            temp_vector_store.add({"content": "Entry 1"})
+            temp_vector_store.add({"content": "Entry 2"})
+            
+            # Verify entries were added
+            assert len(temp_vector_store.entries) == 2
+            
+            # Clear memory
+            temp_vector_store.clear()
+            
+            # Verify memory was cleared
+            assert len(temp_vector_store.entries) == 0
+            assert temp_vector_store.embeddings.size == 0
+            
+            # Verify that save_to_disk was called
+            mock_save_to_disk.assert_called_once()
+    
+    def test_cosine_similarity(self):
+        """Test the _cosine_similarity method of VectorStore."""
+        memory = VectorStore()
+        
+        # Create test vectors
+        vec1 = np.array([1, 0, 0])
+        vec2 = np.array([0, 1, 0])
+        vec3 = np.array([1, 1, 0]) / np.sqrt(2)  # Unit vector
+        
+        # Calculate similarities
+        sim1_2 = memory._cosine_similarity(vec1, vec2)
+        sim1_3 = memory._cosine_similarity(vec1, vec3)
+        sim_self = memory._cosine_similarity(vec1, vec1)
+        
+        # Verify results
+        assert sim1_2 == 0  # Orthogonal vectors
+        assert abs(sim1_3 - 1/np.sqrt(2)) < 1e-6  # 45-degree angle
+        assert sim_self == 1  # Same vector

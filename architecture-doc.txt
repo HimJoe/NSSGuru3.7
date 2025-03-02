@@ -1,0 +1,158 @@
+# Agentic AI Architecture
+
+This document provides an overview of the Agentic AI framework architecture, explaining the key components and how they interact.
+
+## System Overview
+
+The Agentic AI framework is designed to create autonomous AI agents with reasoning capabilities, tool use, and persistent memory. The system follows a modular design where components can be combined in various ways to create agents with different capabilities.
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         Agent                               │
+│                                                             │
+│   ┌─────────────┐      ┌──────────────┐     ┌──────────┐   │
+│   │ LLM Backend │◄────►│ Prompt System │◄───►│ Reasoning│   │
+│   └─────────────┘      └──────────────┘     └──────────┘   │
+│          ▲                     ▲                            │
+│          │                     │                            │
+│          ▼                     ▼                            │
+│   ┌─────────────┐      ┌──────────────┐     ┌──────────┐   │
+│   │ Tool System │◄────►│ Memory System│◄───►│   API    │   │
+│   └─────────────┘      └──────────────┘     └──────────┘   │
+│          ▲                     ▲                            │
+└──────────┼─────────────────────┼────────────────────────────┘
+           │                     │
+           ▼                     ▼
+   ┌──────────────┐      ┌──────────────┐
+   │External Tools│      │  Persistent  │
+   │and Services  │      │   Storage    │
+   └──────────────┘      └──────────────┘
+```
+
+## Core Components
+
+### Agents
+
+The framework provides several agent types with different capabilities:
+
+- **BaseAgent**: The foundation class for all agents, implementing core functionality like tool integration, memory management, and interaction patterns.
+
+- **ReasoningAgent**: Extends BaseAgent with chain-of-thought reasoning capabilities, explicitly generating intermediate reasoning steps before reaching conclusions.
+
+- **ToolUsingAgent**: Specializes in effectively using tools to solve complex problems, with enhanced capabilities for tool selection, parameter validation, and tool result interpretation.
+
+### Memory Systems
+
+Two memory systems are provided for agents to store and retrieve information:
+
+- **WorkingMemory**: A short-term memory system designed for conversation context, maintaining a fixed-size buffer of recent interactions and important contextual information.
+
+- **VectorStore**: A long-term memory system that uses vector embeddings for semantic storage and retrieval, enabling agents to access relevant past interactions and knowledge based on semantic similarity.
+
+### Tools
+
+Tools extend agent capabilities by allowing them to interact with the external world:
+
+- **BaseTool**: The foundation class for all tools, defining a standard interface with parameter validation, execution, and metadata.
+
+- **WebSearchTool**: Allows agents to retrieve information from the internet using search engine APIs.
+
+- **CodeExecutionTool**: Enables agents to execute Python code in a sandboxed environment for data processing, analysis, and computation.
+
+- **FileOperationsTool**: Provides file system operations like reading, writing, and listing files within a controlled environment.
+
+### Prompt System
+
+The prompt system manages how agents interact with the underlying language model:
+
+- **System Prompts**: Define agent behavior, personality, and capabilities through carefully crafted prompts.
+
+- **Templates**: Allow for dynamic prompt generation with variables, supporting different interaction patterns.
+
+## Execution Flow
+
+The typical execution flow for an agent processing a user request is:
+
+1. **Input Processing**: The agent receives a user input message.
+
+2. **Memory Retrieval**: Relevant context is retrieved from memory based on the current query.
+
+3. **Prompt Generation**: A prompt is generated combining the system prompt, memory context, tool descriptions, and user input.
+
+4. **LLM Invocation**: The prompt is sent to the language model to generate a response.
+
+5. **Tool Call Detection**: If the response contains tool calls, they are parsed and executed.
+
+6. **Tool Execution**: The specified tools are executed with the provided parameters.
+
+7. **Response Generation**: A final response is generated, potentially incorporating tool results.
+
+8. **Memory Update**: The interaction is stored in the agent's memory.
+
+## Design Principles
+
+The framework is built on several key design principles:
+
+### Modularity
+
+Components are designed to be interchangeable, allowing users to mix and match different agents, tools, and memory systems based on their specific needs. This modular approach enables easy extension and customization.
+
+### Extensibility
+
+The framework can be extended in various ways:
+
+- **Custom Agents**: Create specialized agents by subclassing existing agent types.
+- **Custom Tools**: Implement domain-specific tools by subclassing BaseTool or using the `@tool` decorator.
+- **Custom Memory**: Develop specialized memory systems for specific use cases.
+
+### Safety
+
+Security measures are integrated throughout the framework:
+
+- **Sandboxed Code Execution**: Python code is executed in a controlled environment with limitations on imports and function calls.
+- **Tool Parameter Validation**: All tool parameters are validated before execution to prevent errors and potential security issues.
+- **Controlled File Operations**: File operations are restricted to specific directories and file sizes.
+
+## Configuration System
+
+The framework includes a flexible configuration system supporting multiple sources:
+
+- **Environment Variables**: Configure the framework using environment variables.
+- **Configuration Files**: Load configuration from JSON or YAML files.
+- **Programmatic Configuration**: Update configuration at runtime through API calls.
+
+Configuration settings control various aspects of the framework, including model selection, tool availability, memory parameters, and security settings.
+
+## Logging System
+
+A comprehensive logging system tracks agent activity, tool usage, and system events, supporting:
+
+- **Console Logging**: Display logs in the console for development and debugging.
+- **File Logging**: Save logs to files for persistent records.
+- **Context-Aware Logging**: Include contextual information in logs for better traceability.
+
+## Multi-Agent Systems
+
+The framework supports creating systems with multiple specialized agents that collaborate to solve complex problems. Each agent can have different capabilities, tools, and system prompts, enabling a division of labor for complex tasks.
+
+## Extension Points
+
+The framework provides several extension points for customization:
+
+### Custom LLM Providers
+
+Implement custom LLM providers by extending the `_call_llm` method in the BaseAgent class to integrate with different AI models and providers.
+
+### Custom Tools
+
+Create domain-specific tools using either:
+- Class-based approach: Subclass BaseTool and implement the execute method.
+- Decorator-based approach: Use the `@tool` decorator on functions to create tools directly.
+
+### Custom Memory Systems
+
+Implement specialized memory systems by creating classes with similar interfaces to the existing memory systems, tailored to specific use cases or storage backends.
+
+### Custom Agent Types
+
+Create new agent types by subclassing BaseAgent or existing agent types, implementing specialized behavior for specific domains or interaction patterns.

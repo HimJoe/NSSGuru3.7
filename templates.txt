@@ -1,0 +1,245 @@
+"""
+Prompt Templates
+
+This module provides functionality for managing and rendering prompt templates,
+allowing for dynamic prompt generation based on variables.
+"""
+
+import re
+import string
+from typing import Dict, Any, Optional, List, Callable
+import json
+
+from ..utils.logger import get_logger
+
+# Get module logger
+logger = get_logger("prompts.templates")
+
+# Dictionary to store registered templates
+_templates: Dict[str, str] = {}
+
+# Default templates
+_DEFAULT_TEMPLATES = {
+    "agent_intro": "You are {agent_type} AI assistant named {agent_name}. {additional_info}",
+    
+    "tool_use": """You have access to the following tools:
+{tool_descriptions}
+
+To use a tool, respond in the following format:
+```json
+{{
+  "tool_name": "name_of_tool",
+  "parameters": {{
+    "param1": "value1",
+    "param2": "value2"
+  }}
+}}
+```
+
+After receiving tool results, you can use another tool or provide a final response.""",
+    
+    "memory_context": """Relevant information from memory:
+{memory_context}
+
+Use this information if it's helpful for answering the query.""",
+    
+    "reasoning_steps": """Think through this step by step:
+1. {step1}
+2. {step2}
+3. {step3}
+{additional_steps}
+
+Based on this reasoning, provide your final answer.""",
+    
+    "error_handling": """An error occurred: {error_message}
+
+Please review the error and retry with corrected input. {suggestion}""",
+}
+
+# Register default templates
+_templates.update(_DEFAULT_TEMPLATES)
+
+def register_template(name: str, template: str) -> None:
+    """
+    Register a new template or update an existing one.
+    
+    Args:
+        name: Template name
+        template: Template string
+    """
+    _templates[name] = template
+    logger.debug(f"Registered template: {name}")
+
+def get_template(name: str) -> Optional[str]:
+    """
+    Get a template by name.
+    
+    Args:
+        name: Template name
+        
+    Returns:
+        Template string or None if not found
+    """
+    return _templates.get(name)
+
+def render_template(
+    template_name_or_string: str,
+    variables: Dict[str, Any],
+    fallback: str = "N/A",
+    missing_key_action: str = "replace"
+) -> str:
+    """
+    Render a template with the given variables.
+    
+    Args:
+        template_name_or_string: Template name or template string
+        variables: Dictionary of variables to use for rendering
+        fallback: Value to use for missing variables
+        missing_key_action: Action for missing keys ("replace", "error", "ignore")
+        
+    Returns:
+        Rendered template string
+        
+    Raises:
+        KeyError: If missing_key_action is "error" and a variable is missing
+        ValueError: If the template is not found
+    """
+    # Check if template_name_or_string is a registered template name
+    template = _templates.get(template_name_or_string)
+    
+    # If not found, treat the input as a template string
+    if template is None:
+        template = template_name_or_string
+    
+    # Simple string formatting using {variable} syntax
+    try:
+        # Use a custom formatter to handle missing keys
+        class CustomFormatter(string.Formatter):
+            def get_value(self, key, args, kwargs):
+                if key not in kwargs:
+                    if missing_key_action == "error":
+                        raise KeyError(f"Missing variable in template: {key}")
+                    elif missing_key_action == "replace":
+                        return f"{{{key}}}" if fallback == "N/A" else fallback
+                    elif missing_key_action == "ignore":
+                        return f"{{{key}}}"
+                return kwargs[key]
+        
+        formatter = CustomFormatter()
+        result = formatter.format(template, **variables)
+        
+        return result
+    
+    except Exception as e:
+        logger.error(f"Error rendering template: {str(e)}")
+        raise
+
+def render_tool_descriptions(tools: List[Any]) -> str:
+    """
+    Render tool descriptions in a formatted string.
+    
+    Args:
+        tools: List of tool objects
+        
+    Returns:
+        Formatted tool descriptions
+    """
+    descriptions = []
+    
+    for i, tool in enumerate(tools, 1):
+        # Format parameters
+        params = tool.params_schema or {}
+        param_descriptions = []
+        
+        for param_name, param_info in params.items():
+            required = "required" if param_name in tool.required_params else "optional"
+            param_desc = param_info.get("description", "No description")
+            param_descriptions.append(f"- {param_name} ({required}): {param_desc}")
+        
+        # Build the complete tool description
+        tool_description = [
+            f"TOOL {i}: {tool.name}",
+            f"Description: {tool.description}",
+            "Parameters:"
+        ]
+        
+        # Add parameter descriptions
+        if param_descriptions:
+            tool_description.extend(param_descriptions)
+        else:
+            tool_description.append("- No parameters required")
+        
+        # Add usage example
+        if hasattr(tool, "usage") and tool.usage:
+            tool_description.append(f"Example: {tool.usage}")
+        
+        # Add to the list of descriptions
+        descriptions.append("\n".join(tool_description))
+    
+    return "\n\n".join(descriptions)
+
+def render_memory_context(memory_items: List[Dict[str, Any]], max_items: int = 5) -> str:
+    """
+    Render memory items in a formatted string.
+    
+    Args:
+        memory_items: List of memory item dictionaries
+        max_items: Maximum number of items to include
+        
+    Returns:
+        Formatted memory context
+    """
+    if not memory_items:
+        return "No relevant memory items found."
+    
+    # Limit the number of items
+    memory_items = memory_items[:max_items]
+    
+    # Format each item
+    formatted_items = []
+    for i, item in enumerate(memory_items, 1):
+        # Format based on item type
+        if "role" in item and "content" in item:
+            # Message format
+            role = item["role"].capitalize()
+            content = item["content"]
+            formatted = f"Memory {i} - {role}: {content}"
+        elif "content" in item:
+            # Simple content format
+            content = item["content"]
+            formatted = f"Memory {i}: {content}"
+        else:
+            # Fallback format for other types
+            formatted = f"Memory {i}: {json.dumps(item)}"
+        
+        formatted_items.append(formatted)
+    
+    return "\n\n".join(formatted_items)
+
+def load_template_from_file(file_path: str, template_name: Optional[str] = None) -> str:
+    """
+    Load a template from a file and optionally register it.
+    
+    Args:
+        file_path: Path to the template file
+        template_name: Name to register the template under (if None, don't register)
+        
+    Returns:
+        Template string
+        
+    Raises:
+        FileNotFoundError: If the template file is not found
+    """
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            template = f.read()
+        
+        # Register the template if a name is provided
+        if template_name:
+            register_template(template_name, template)
+        
+        return template
+    
+    except Exception as e:
+        logger.error(f"Error loading template from {file_path}: {str(e)}")
+        raise

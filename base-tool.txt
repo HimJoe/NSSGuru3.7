@@ -1,0 +1,289 @@
+"""
+Base Tool Implementation
+
+This module defines the BaseTool class that all tools must inherit from.
+It provides a standard interface for tool registration, validation, and execution.
+"""
+
+from typing import Dict, List, Optional, Any, Callable
+import inspect
+import time
+
+from ..utils.logger import get_logger
+
+class BaseTool:
+    """
+    Base class for all tools in the framework.
+    
+    This class defines the standard interface that all tools must implement,
+    including execution, parameter validation, and metadata.
+    """
+    
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        usage: str,
+        params_schema: Dict[str, Dict[str, Any]],
+        required_params: Optional[List[str]] = None,
+        returns_description: str = "Result of the tool execution",
+    ):
+        """
+        Initialize a base tool.
+        
+        Args:
+            name: Tool name (must be unique)
+            description: Tool description
+            usage: Example usage of the tool
+            params_schema: Schema for tool parameters
+            required_params: List of required parameter names
+            returns_description: Description of what the tool returns
+        """
+        self.name = name
+        self.description = description
+        self.usage = usage
+        self.params_schema = params_schema
+        self.required_params = required_params or []
+        self.returns_description = returns_description
+        self.logger = get_logger(f"tool.{name.lower()}")
+        
+        self.logger.info(f"Initialized tool: {name}")
+    
+    def execute(self, **kwargs) -> Any:
+        """
+        Execute the tool with the provided parameters.
+        
+        This is an abstract method that must be implemented by subclasses.
+        
+        Args:
+            **kwargs: Tool parameters
+            
+        Returns:
+            Result of the tool execution
+        """
+        raise NotImplementedError("Tool must implement execute method")
+    
+    def validate_params(self, params: Dict[str, Any]) -> Dict[str, str]:
+        """
+        Validate parameters against the tool's schema.
+        
+        Args:
+            params: Parameters to validate
+            
+        Returns:
+            Dictionary of validation errors, empty if valid
+        """
+        errors = {}
+        
+        # Check for required parameters
+        for param_name in self.required_params:
+            if param_name not in params:
+                errors[param_name] = f"Required parameter '{param_name}' is missing"
+        
+        # Validate parameter types if specified in schema
+        for param_name, param_value in params.items():
+            if param_name in self.params_schema:
+                schema = self.params_schema[param_name]
+                
+                # Type validation
+                if "type" in schema:
+                    expected_type = schema["type"]
+                    
+                    # Basic type validation
+                    valid = True
+                    if expected_type == "string" and not isinstance(param_value, str):
+                        valid = False
+                    elif expected_type == "integer" and not (isinstance(param_value, int) or (isinstance(param_value, str) and param_value.isdigit())):
+                        valid = False
+                    elif expected_type == "number" and not (isinstance(param_value, (int, float)) or (isinstance(param_value, str) and param_value.replace(".", "", 1).isdigit())):
+                        valid = False
+                    elif expected_type == "boolean" and not isinstance(param_value, bool) and param_value not in ["true", "false", "True", "False"]:
+                        valid = False
+                    elif expected_type == "array" and not isinstance(param_value, list):
+                        valid = False
+                    elif expected_type == "object" and not isinstance(param_value, dict):
+                        valid = False
+                    
+                    if not valid:
+                        errors[param_name] = f"Parameter '{param_name}' must be of type '{expected_type}'"
+                
+                # Enumeration validation
+                if "enum" in schema and param_value not in schema["enum"]:
+                    errors[param_name] = f"Parameter '{param_name}' must be one of: {', '.join(map(str, schema['enum']))}"
+                
+                # Pattern validation (for strings)
+                if "pattern" in schema and isinstance(param_value, str):
+                    import re
+                    if not re.match(schema["pattern"], param_value):
+                        errors[param_name] = f"Parameter '{param_name}' must match pattern: {schema['pattern']}"
+                
+                # Range validation (for numbers)
+                if isinstance(param_value, (int, float)) or (isinstance(param_value, str) and param_value.replace(".", "", 1).isdigit()):
+                    num_value = float(param_value)
+                    
+                    if "minimum" in schema and num_value < schema["minimum"]:
+                        errors[param_name] = f"Parameter '{param_name}' must be >= {schema['minimum']}"
+                    
+                    if "maximum" in schema and num_value > schema["maximum"]:
+                        errors[param_name] = f"Parameter '{param_name}' must be <= {schema['maximum']}"
+        
+        return errors
+    
+    def __call__(self, **kwargs) -> Any:
+        """
+        Call the tool like a function.
+        
+        This validates parameters and then executes the tool.
+        
+        Args:
+            **kwargs: Tool parameters
+            
+        Returns:
+            Result of the tool execution
+            
+        Raises:
+            ValueError: If parameter validation fails
+        """
+        # Validate parameters
+        errors = self.validate_params(kwargs)
+        if errors:
+            error_msg = "; ".join([f"{k}: {v}" for k, v in errors.items()])
+            raise ValueError(f"Parameter validation failed: {error_msg}")
+        
+        # Log execution
+        self.logger.info(f"Executing tool: {self.name}")
+        start_time = time.time()
+        
+        # Execute the tool
+        try:
+            result = self.execute(**kwargs)
+            execution_time = time.time() - start_time
+            self.logger.info(f"Tool executed successfully in {execution_time:.2f}s")
+            return result
+        except Exception as e:
+            execution_time = time.time() - start_time
+            self.logger.error(f"Tool execution failed after {execution_time:.2f}s: {str(e)}")
+            raise
+
+
+def tool(
+    name: str,
+    description: str,
+    usage: str = "",
+    params_schema: Optional[Dict[str, Dict[str, Any]]] = None,
+    required_params: Optional[List[str]] = None,
+    returns_description: str = "",
+) -> Callable:
+    """
+    Decorator to create a tool from a function.
+    
+    This provides a convenient way to define tools without creating a full class.
+    
+    Args:
+        name: Tool name
+        description: Tool description
+        usage: Example usage
+        params_schema: Parameter schema (will be auto-generated from function signature if None)
+        required_params: Required parameters (will be auto-generated from function signature if None)
+        returns_description: Description of return value
+        
+    Returns:
+        Decorator function
+    """
+    def decorator(func: Callable) -> BaseTool:
+        # Auto-generate schema from function signature if not provided
+        if params_schema is None:
+            auto_schema = {}
+            sig = inspect.signature(func)
+            
+            for param_name, param in sig.parameters.items():
+                # Skip self parameter for methods
+                if param_name == 'self':
+                    continue
+                
+                param_schema = {"description": ""}
+                
+                # Try to infer type from type hints
+                if param.annotation != inspect.Parameter.empty:
+                    if param.annotation == str:
+                        param_schema["type"] = "string"
+                    elif param.annotation == int:
+                        param_schema["type"] = "integer"
+                    elif param.annotation == float:
+                        param_schema["type"] = "number"
+                    elif param.annotation == bool:
+                        param_schema["type"] = "boolean"
+                    elif param.annotation == list or param.annotation == List:
+                        param_schema["type"] = "array"
+                    elif param.annotation == dict or param.annotation == Dict:
+                        param_schema["type"] = "object"
+                
+                auto_schema[param_name] = param_schema
+            
+            tool_params_schema = auto_schema
+        else:
+            tool_params_schema = params_schema
+        
+        # Auto-generate required params if not provided
+        if required_params is None:
+            auto_required = []
+            sig = inspect.signature(func)
+            
+            for param_name, param in sig.parameters.items():
+                # Skip self parameter for methods
+                if param_name == 'self':
+                    continue
+                
+                # If parameter has no default value, it's required
+                if param.default == inspect.Parameter.empty:
+                    auto_required.append(param_name)
+            
+            tool_required_params = auto_required
+        else:
+            tool_required_params = required_params
+        
+        # Auto-generate usage example if not provided
+        tool_usage = usage
+        if not tool_usage:
+            # Create a simple example call
+            example_args = []
+            for param_name in tool_required_params:
+                if param_name in tool_params_schema:
+                    param_type = tool_params_schema[param_name].get("type", "string")
+                    if param_type == "string":
+                        example_args.append(f'{param_name}="example"')
+                    elif param_type == "integer":
+                        example_args.append(f"{param_name}=1")
+                    elif param_type == "number":
+                        example_args.append(f"{param_name}=1.0")
+                    elif param_type == "boolean":
+                        example_args.append(f"{param_name}=True")
+                    elif param_type == "array":
+                        example_args.append(f"{param_name}=[1, 2, 3]")
+                    elif param_type == "object":
+                        example_args.append(f'{param_name}={{"key": "value"}}')
+                else:
+                    example_args.append(f'{param_name}="value"')
+            
+            tool_usage = f'{name}({", ".join(example_args)})'
+        
+        # Create a tool class
+        class FunctionTool(BaseTool):
+            def __init__(self):
+                super().__init__(
+                    name=name,
+                    description=description,
+                    usage=tool_usage,
+                    params_schema=tool_params_schema,
+                    required_params=tool_required_params,
+                    returns_description=returns_description or getattr(func, "__doc__", "") or "Result of the tool execution"
+                )
+                self.func = func
+            
+            def execute(self, **kwargs):
+                return self.func(**kwargs)
+        
+        # Create and return a tool instance
+        return FunctionTool()
+    
+    return decorator

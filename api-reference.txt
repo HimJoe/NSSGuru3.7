@@ -1,0 +1,554 @@
+# Agentic AI API Reference
+
+This document provides detailed API reference for the Agentic AI framework, covering the main classes and functions available to developers.
+
+## Agents
+
+### BaseAgent
+
+```python
+class BaseAgent:
+    def __init__(
+        self,
+        tools: Optional[List[BaseTool]] = None,
+        memory: Optional[BaseMemory] = None,
+        system_prompt: str = system_prompts.DEFAULT_SYSTEM_PROMPT,
+        model: str = "claude-3-7-sonnet",
+        temperature: float = 0.7,
+        max_tokens: int = 4000,
+        name: str = "Agent",
+        metadata: Optional[Dict[str, Any]] = None,
+    )
+```
+
+**Parameters:**
+
+- `tools`: List of tools the agent can use
+- `memory`: Memory system for the agent
+- `system_prompt`: System prompt that defines agent behavior
+- `model`: LLM model to use for this agent
+- `temperature`: Sampling temperature for the model
+- `max_tokens`: Maximum tokens to generate in responses
+- `name`: Agent name (used in logging and multi-agent systems)
+- `metadata`: Additional agent metadata
+
+**Methods:**
+
+```python
+def run(self, user_input: str) -> str
+```
+
+Process a user input and generate a response, potentially using tools.
+
+```python
+def reset(self) -> None
+```
+
+Reset the agent's state, including working memory.
+
+### ReasoningAgent
+
+```python
+class ReasoningAgent(BaseAgent):
+    def __init__(
+        self,
+        tools: Optional[List[BaseTool]] = None,
+        memory: Optional[BaseMemory] = None,
+        system_prompt: str = system_prompts.REASONING_SYSTEM_PROMPT,
+        reasoning_steps: int = 3,
+        model: str = "claude-3-7-sonnet",
+        temperature: float = 0.7,
+        max_tokens: int = 8000,
+        name: str = "ReasoningAgent",
+        metadata: Optional[Dict[str, Any]] = None,
+    )
+```
+
+**Additional Parameters:**
+
+- `reasoning_steps`: Minimum number of reasoning steps to use
+
+**Methods:**
+
+```python
+def run(self, user_input: str, extract_final_answer: bool = False) -> str
+```
+
+Process a user input with explicit reasoning steps. If `extract_final_answer` is True, only the final answer is returned.
+
+```python
+def analyze_problem(self, problem_statement: str) -> Dict[str, Any]
+```
+
+Perform a structured analysis of a problem statement, returning components like key concepts, constraints, approaches, etc.
+
+### ToolUsingAgent
+
+```python
+class ToolUsingAgent(BaseAgent):
+    def __init__(
+        self,
+        tools: List[BaseTool],
+        memory: Optional[BaseMemory] = None,
+        system_prompt: str = system_prompts.TOOL_USING_SYSTEM_PROMPT,
+        model: str = "claude-3-7-sonnet",
+        temperature: float = 0.7,
+        max_tokens: int = 4000,
+        max_tool_iterations: int = 5,
+        name: str = "ToolUsingAgent",
+        metadata: Optional[Dict[str, Any]] = None,
+        auto_validate_params: bool = True,
+    )
+```
+
+**Additional Parameters:**
+
+- `max_tool_iterations`: Maximum number of tool calls in a single turn
+- `auto_validate_params`: Whether to validate tool parameters before execution
+
+## Memory Systems
+
+### WorkingMemory
+
+```python
+class WorkingMemory:
+    def __init__(
+        self,
+        max_entries: int = 100,
+        buffer_type: str = "fifo",
+        namespace: str = "default",
+    )
+```
+
+**Parameters:**
+
+- `max_entries`: Maximum number of entries to keep in memory
+- `buffer_type`: Type of buffer management ('fifo' or 'priority')
+- `namespace`: Namespace for memory isolation
+
+**Methods:**
+
+```python
+def add(self, entry: Dict[str, Any], priority: float = 0.0) -> None
+```
+
+Add an entry to working memory with optional priority.
+
+```python
+def get_all(self) -> List[Dict[str, Any]]
+```
+
+Get all entries in working memory.
+
+```python
+def get_recent(self, count: int = 5) -> List[Dict[str, Any]]
+```
+
+Get most recent entries.
+
+```python
+def get_conversation(self) -> str
+```
+
+Get formatted conversation history.
+
+```python
+def retrieve(self, query: str = "", count: int = 5) -> str
+```
+
+Retrieve relevant entries from working memory.
+
+```python
+def clear(self) -> None
+```
+
+Clear all entries from working memory.
+
+```python
+def to_json(self) -> str
+```
+
+Convert working memory to JSON string.
+
+```python
+def from_json(self, json_str: str) -> None
+```
+
+Load working memory from JSON string.
+
+### VectorStore
+
+```python
+class VectorStore:
+    def __init__(
+        self,
+        embedding_model: str = "text-embedding-ada-002",
+        storage_path: Optional[str] = None,
+        max_entries: int = 1000,
+        similarity_threshold: float = 0.7,
+        namespace: str = "default",
+    )
+```
+
+**Parameters:**
+
+- `embedding_model`: Model to use for text embeddings
+- `storage_path`: Path to store the vector database
+- `max_entries`: Maximum number of entries to store
+- `similarity_threshold`: Minimum cosine similarity for relevance
+- `namespace`: Namespace for memory isolation
+
+**Methods:**
+
+```python
+def add(self, entry: Dict[str, Any]) -> None
+```
+
+Add an entry to the vector store.
+
+```python
+def retrieve(self, query: str, top_k: int = 5) -> str
+```
+
+Retrieve relevant entries based on semantic similarity.
+
+```python
+def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]
+```
+
+Search for entries and return full objects with similarity scores.
+
+```python
+def clear(self) -> None
+```
+
+Clear all entries from memory.
+
+## Tools
+
+### BaseTool
+
+```python
+class BaseTool:
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        usage: str,
+        params_schema: Dict[str, Dict[str, Any]],
+        required_params: Optional[List[str]] = None,
+        returns_description: str = "Result of the tool execution",
+    )
+```
+
+**Parameters:**
+
+- `name`: Tool name (must be unique)
+- `description`: Tool description
+- `usage`: Example usage of the tool
+- `params_schema`: Schema for tool parameters
+- `required_params`: List of required parameter names
+- `returns_description`: Description of what the tool returns
+
+**Methods:**
+
+```python
+def execute(self, **kwargs) -> Any
+```
+
+Execute the tool with the provided parameters. This is an abstract method that must be implemented by subclasses.
+
+```python
+def validate_params(self, params: Dict[str, Any]) -> Dict[str, str]
+```
+
+Validate parameters against the tool's schema.
+
+### Tool Decorator
+
+```python
+def tool(
+    name: str,
+    description: str,
+    usage: str = "",
+    params_schema: Optional[Dict[str, Dict[str, Any]]] = None,
+    required_params: Optional[List[str]] = None,
+    returns_description: str = "",
+) -> Callable
+```
+
+Decorator to create a tool from a function.
+
+**Parameters:**
+
+- `name`: Tool name
+- `description`: Tool description
+- `usage`: Example usage
+- `params_schema`: Parameter schema (will be auto-generated from function signature if None)
+- `required_params`: Required parameters (will be auto-generated from function signature if None)
+- `returns_description`: Description of return value
+
+### WebSearchTool
+
+```python
+class WebSearchTool(BaseTool):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        search_engine: str = "google",
+        max_results: int = 5,
+        timeout: float = 10.0,
+        name: str = "web_search",
+    )
+```
+
+**Parameters:**
+
+- `api_key`: API key for the search engine
+- `search_engine`: Search engine to use ('google', 'bing', etc.)
+- `max_results`: Maximum number of results to return
+- `timeout`: Timeout for search requests in seconds
+- `name`: Tool name
+
+**Methods:**
+
+```python
+def execute(
+    self,
+    query: str,
+    num_results: int = 5,
+    include_domains: Optional[List[str]] = None,
+    exclude_domains: Optional[List[str]] = None,
+    time_period: str = "any"
+) -> List[Dict[str, str]]
+```
+
+Execute a web search query.
+
+### CodeExecutionTool
+
+```python
+class CodeExecutionTool(BaseTool):
+    def __init__(
+        self,
+        timeout: float = 5.0,
+        max_output_length: int = 8192,
+        allow_plots: bool = True,
+        additional_allowed_modules: Optional[List[str]] = None,
+        name: str = "execute_python",
+    )
+```
+
+**Parameters:**
+
+- `timeout`: Maximum execution time in seconds
+- `max_output_length`: Maximum length of output text
+- `allow_plots`: Whether to allow matplotlib plots
+- `additional_allowed_modules`: Additional modules to allow
+- `name`: Tool name
+
+**Methods:**
+
+```python
+def execute(
+    self,
+    code: str,
+    inputs: Optional[Dict[str, Any]] = None,
+    timeout: Optional[float] = None,
+    description: str = ""
+) -> Dict[str, Any]
+```
+
+Execute Python code in a sandboxed environment.
+
+### FileOperationsTool
+
+```python
+class FileOperationsTool(BaseTool):
+    def __init__(
+        self,
+        allowed_directories: Optional[List[str]] = None,
+        default_directory: Optional[str] = None,
+        max_file_size: int = 10 * 1024 * 1024,  # 10MB
+        name: str = "file_operations",
+    )
+```
+
+**Parameters:**
+
+- `allowed_directories`: List of directories the tool is allowed to access
+- `default_directory`: Default directory for operations
+- `max_file_size`: Maximum file size in bytes
+- `name`: Tool name
+
+**Methods:**
+
+```python
+def execute(
+    self,
+    operation: str,
+    file_path: str,
+    content: Optional[Any] = None,
+    format: str = "text"
+) -> Any
+```
+
+Execute a file operation. Operations include:
+- "read": Read a file with the specified format
+- "write": Write content to a file with the specified format
+- "list": List files in a directory
+- "delete": Delete a file
+
+## Configuration
+
+```python
+def get_config() -> Dict[str, Any]
+```
+
+Get the current configuration.
+
+```python
+def load_config(
+    config_file: Optional[str] = None,
+    env_prefix: str = "AGENTIC_AI_",
+    merge: bool = True
+) -> Dict[str, Any]
+```
+
+Load configuration from files and environment variables.
+
+```python
+def update_config(updates: Dict[str, Any]) -> Dict[str, Any]
+```
+
+Update configuration with new values.
+
+```python
+def get_config_value(path: Union[str, List[str]], default: Any = None) -> Any
+```
+
+Get a specific configuration value using a dot-notation path.
+
+## Logging
+
+```python
+def setup_logging(
+    level: int = DEFAULT_LEVEL,
+    log_format: str = DEFAULT_FORMAT,
+    log_file: Optional[str] = None,
+    log_to_console: bool = True,
+    log_dir: Optional[str] = None,
+    rotate_logs: bool = False,
+    max_bytes: int = 10 * 1024 * 1024,
+    backup_count: int = 5
+) -> None
+```
+
+Set up logging configuration for the framework.
+
+```python
+def get_logger(name: str) -> logging.Logger
+```
+
+Get a logger instance with the specified name.
+
+## Utility Functions
+
+### Helpers
+
+```python
+def format_json(obj: Any, indent: int = 2) -> str
+```
+
+Format an object as a JSON string with proper indentation.
+
+```python
+def truncate_text(text: str, max_length: int = 1000, suffix: str = "...") -> str
+```
+
+Truncate text to a maximum length.
+
+```python
+def sanitize_filename(filename: str) -> str
+```
+
+Sanitize a filename to be safe for file system operations.
+
+```python
+def is_valid_url(url: str) -> bool
+```
+
+Check if a string is a valid URL.
+
+### Templates
+
+```python
+def register_template(name: str, template: str) -> None
+```
+
+Register a new template or update an existing one.
+
+```python
+def get_template(name: str) -> Optional[str]
+```
+
+Get a template by name.
+
+```python
+def render_template(
+    template_name_or_string: str,
+    variables: Dict[str, Any],
+    fallback: str = "N/A",
+    missing_key_action: str = "replace"
+) -> str
+```
+
+Render a template with the given variables.
+
+## File Operations
+
+```python
+def read_file(file_path: str, format: str = "text") -> Any
+```
+
+Read a file with the specified format.
+
+```python
+def write_file(file_path: str, content: Any, format: str = "text") -> Dict[str, Any]
+```
+
+Write content to a file with the specified format.
+
+## Main Functions
+
+```python
+def create_agent(
+    agent_type: str = "reasoning",
+    tools: Optional[List[BaseTool]] = None,
+    memory_type: Optional[str] = "working",
+    system_prompt: Optional[str] = None,
+    agent_config: Optional[Dict[str, Any]] = None
+) -> BaseAgent
+```
+
+Create an agent with the specified configuration.
+
+```python
+def run_agent_session(
+    agent: BaseAgent, 
+    initial_prompt: Optional[str] = None,
+    interactive: bool = True
+) -> List[Dict[str, str]]
+```
+
+Run an interactive or single-prompt agent session.
+
+```python
+def initialize_framework(
+    log_level: str = "INFO",
+    config_file: Optional[str] = None,
+    api_key: Optional[str] = None
+) -> None
+```
+
+Initialize the framework with the specified configuration.
